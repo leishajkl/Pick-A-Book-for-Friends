@@ -2,99 +2,132 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Pick-A-Book (Decision Cards)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pick-A-Book｜Decision Cards</title>
 
 <style>
 body{
+  margin:0;
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial;
-  margin:40px;
   background:#0f1115;
   color:#eaeaf0;
 }
-h1{font-size:32px}
-.sub{opacity:.8;margin-bottom:24px}
-.card{
-  border:1px solid #333;
-  border-radius:12px;
-  padding:16px;
-  margin-bottom:16px;
+.topbar{
+  position:fixed;top:0;left:0;right:0;height:56px;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 16px;background:#0f1115;border-bottom:1px solid #222;
+  z-index:9999;
 }
+.brand{font-weight:800}
 .langToggle{
-  position:fixed;
-  top:16px;
-  right:16px;
-  background:#1a1c22;
-  border:1px solid #333;
-  border-radius:999px;
-  padding:6px;
-  display:flex;
-  gap:6px;
+  display:flex;gap:6px;padding:4px;border-radius:999px;
+  border:1px solid #333;background:#1a1c22;
 }
 .langToggle a{
-  text-decoration:none;
-  color:#eaeaf0;
-  padding:6px 10px;
-  border-radius:999px;
-  font-size:13px;
+  text-decoration:none;color:#eaeaf0;
+  padding:6px 10px;border-radius:999px;
+  font-size:13px;font-weight:700;
 }
-.langToggle a.active{
-  background:#333;
+.langToggle a.active{background:#333}
+main{padding:88px 16px 40px;max-width:860px;margin:auto}
+.card{
+  border:1px solid #2a2d35;border-radius:14px;
+  padding:18px;margin-bottom:16px;background:#14161c;
 }
 button{
-  background:#2a2d35;
-  color:#fff;
-  border:1px solid #444;
-  padding:10px 14px;
-  border-radius:8px;
-  cursor:pointer;
+  background:#2a2d35;border:1px solid #3a3d45;
+  color:#fff;padding:10px 14px;border-radius:10px;cursor:pointer;
 }
+button:hover{background:#343844}
+input{margin:8px 0}
 </style>
 </head>
 
 <body>
 
-<div class="langToggle">
-  <a href="index.html">中文</a>
-  <a href="index-en.html" class="active">EN</a>
+<div class="topbar">
+  <div class="brand">Pick-A-Book</div>
+  <div class="langToggle">
+    <a href="index.html">中文</a>
+    <a href="index-en.html" class="active">EN</a>
+  </div>
 </div>
 
-<h1>Pick-A-Book for Friends</h1>
-<p class="sub">
-When you don’t know what to read next, let a deck of cards decide.
-</p>
+<main>
+<h1>Pick a Book</h1>
+<p style="opacity:.8">Too many books. One decision.</p>
 
 <div class="card">
-<h3>What is this?</h3>
-<p>
-This is a zero-backend decision tool for readers with large TBR lists.
-Upload your Goodreads “to-read” CSV, draw one book per category,
-and confirm only what you actually plan to read.
-</p>
-</div>
-
-<div class="card">
-<h3>Key Rules</h3>
-<ul>
-<li>One draw per category per day</li>
-<li>Viewing ≠ choosing (only Confirm counts)</li>
-<li>Confirmed books enter cooldown (default 30 days)</li>
-</ul>
+  <h3>1｜Upload Goodreads CSV</h3>
+  <input type="file" id="csvInput" accept=".csv">
+  <p style="opacity:.6">Supports to-read / Want to Read / WantToRead</p>
 </div>
 
 <div class="card">
-<h3>How it works</h3>
-<ol>
-<li>Export your Goodreads library as CSV</li>
-<li>Upload it on this page</li>
-<li>Draw candidates by category</li>
-<li>Confirm the one you’ll read</li>
-</ol>
+  <h3>2｜Draw one book</h3>
+  <button onclick="drawBook()">Draw</button>
+  <p id="result" style="margin-top:12px;font-weight:700"></p>
 </div>
 
-<p style="opacity:.6;margin-top:40px">
-All data stays on your device. No login. No tracking.
-</p>
+</main>
+
+<script>
+const STORAGE_KEY = "pickabook_books_v1";
+
+function norm(s){
+  return (s||"").toString().toLowerCase().trim();
+}
+
+function parseCSV(text){
+  const [head,...rows] = text.split(/\r?\n/);
+  const headers = head.split(",");
+  return rows.map(r=>{
+    const cols=r.split(",");
+    const o={};
+    headers.forEach((h,i)=>o[h]=cols[i]||"");
+    return o;
+  });
+}
+
+document.getElementById("csvInput").addEventListener("change",e=>{
+  const f=e.target.files[0];
+  if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{
+    const rows=parseCSV(r.result);
+    const books=[];
+    rows.forEach(row=>{
+      const ex=norm(row["Exclusive Shelf"]);
+      const shelves=norm(row["Bookshelves"]);
+      const isTBR =
+        ex==="to-read" ||
+        shelves.includes("to-read") ||
+        shelves.includes("want to read") ||
+        shelves.includes("want-to-read") ||
+        shelves.includes("wanttoread");
+      if(!isTBR) return;
+      books.push({
+        title:row["Title"],
+        author:row["Author"]
+      });
+    });
+    localStorage.setItem(STORAGE_KEY,JSON.stringify(books));
+    alert(`Imported ${books.length} books`);
+  };
+  r.readAsText(f);
+});
+
+function drawBook(){
+  const books=JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]");
+  if(!books.length){
+    alert("No books imported yet");
+    return;
+  }
+  const b=books[Math.floor(Math.random()*books.length)];
+  document.getElementById("result").innerText =
+    `📖 ${b.title} — ${b.author}`;
+}
+</script>
 
 </body>
 </html>
