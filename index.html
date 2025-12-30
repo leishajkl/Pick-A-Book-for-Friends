@@ -723,7 +723,19 @@
       for(let r=1; r<rows.length; r++){
         const row = rows[r] || [];
         const shelf = (row[iShelf]||"").trim().toLowerCase();
-        if(shelf !== "to-read") continue;
+       const shelf = normalizeStr(row[iShelf]);
+const shelvesCol = header.indexOf("Bookshelves");
+const shelves = shelvesCol !== -1 ? normalizeStr(row[shelvesCol]) : "";
+
+// 支援多種 TBR 寫法
+const isTBR =
+  shelf === "to-read" ||
+  shelves.includes("to-read") ||
+  shelves.includes("Want to Read") ||
+  shelves.includes("To-Read") ||
+  shelves.includes("want-to-read");
+
+if (!isTBR) continue;;
 
         const title = (row[iTitle]||"").trim();
         const author = (row[iAuthor]||"").trim();
