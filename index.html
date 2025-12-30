@@ -6,45 +6,27 @@
 <title>Pick-A-Book｜抽書決策卡</title>
 
 <style>
-body{
-  margin:0;
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial;
-  background:#0f1115;
-  color:#eaeaf0;
-}
-.topbar{
-  position:fixed;top:0;left:0;right:0;height:56px;
-  display:flex;align-items:center;justify-content:space-between;
-  padding:0 16px;background:#0f1115;border-bottom:1px solid #222;
-  z-index:9999;
-}
-.brand{font-weight:800}
-.langToggle{
-  display:flex;gap:6px;padding:4px;border-radius:999px;
-  border:1px solid #333;background:#1a1c22;
-}
-.langToggle a{
-  text-decoration:none;color:#eaeaf0;
-  padding:6px 10px;border-radius:999px;
-  font-size:13px;font-weight:700;
-}
-.langToggle a.active{background:#333}
-main{padding:88px 16px 40px;max-width:860px;margin:auto}
-.card{
-  border:1px solid #2a2d35;border-radius:14px;
-  padding:18px;margin-bottom:16px;background:#14161c;
-}
-button{
-  background:#2a2d35;border:1px solid #3a3d45;
-  color:#fff;padding:10px 14px;border-radius:10px;cursor:pointer;
-}
-button:hover{background:#343844}
-input{margin:8px 0}
+  :root{--bg:#0f1115;--panel:#14161c;--text:#eaeaf0;--muted:rgba(234,234,240,.75);--border:#2a2d35;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial;background:var(--bg);color:var(--text);}
+  .topbar{position:fixed;top:0;left:0;right:0;height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:var(--bg);border-bottom:1px solid #222;z-index:9999}
+  .brand{font-weight:800;letter-spacing:.2px}
+  .langToggle{display:flex;gap:6px;padding:4px;border-radius:999px;border:1px solid #333;background:#1a1c22}
+  .langToggle a{text-decoration:none;color:var(--text);padding:6px 10px;border-radius:999px;font-size:13px;font-weight:700}
+  .langToggle a.active{background:#333}
+  main{padding:88px 16px 40px;max-width:920px;margin:auto}
+  h1{margin:0 0 8px;font-size:32px}
+  .sub{margin:0 0 18px;color:var(--muted)}
+  .card{border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:16px;background:var(--panel)}
+  button{background:#2a2d35;border:1px solid #3a3d45;color:#fff;padding:10px 14px;border-radius:10px;cursor:pointer}
+  button:hover{background:#343844}
+  input{margin:10px 0}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;white-space:pre-wrap}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+  .pill{display:inline-block;padding:2px 8px;border:1px solid #3a3d45;border-radius:999px;color:var(--muted);font-size:12px}
 </style>
 </head>
 
 <body>
-
 <div class="topbar">
   <div class="brand">Pick-A-Book</div>
   <div class="langToggle">
@@ -54,80 +36,188 @@ input{margin:8px 0}
 </div>
 
 <main>
-<h1>抽書決策卡</h1>
-<p style="opacity:.8">書不是不夠，是選不出來。</p>
+  <h1>抽書決策卡</h1>
+  <p class="sub">用 Goodreads 書單做決策卡。匯入後抽一本；只有你真的要讀的那本才需要之後進一步 Confirm（若你接回完整版本）。</p>
 
-<div class="card">
-  <h3>1｜上傳 Goodreads CSV</h3>
-  <input type="file" id="csvInput" accept=".csv">
-  <p style="opacity:.6">支援 to-read / Want to Read / WantToRead</p>
-</div>
+  <div class="card">
+    <h3 style="margin:0 0 8px">1｜上傳 Goodreads CSV</h3>
+    <div class="row">
+      <input type="file" id="csvInput" accept=".csv">
+      <span class="pill">支援：to-read / want to read / want-to-read / wanttoread</span>
+    </div>
+    <div id="importInfo" class="mono" style="color:var(--muted);margin-top:8px"></div>
+  </div>
 
-<div class="card">
-  <h3>2｜抽一本書</h3>
-  <button onclick="drawBook()">抽書</button>
-  <p id="result" style="margin-top:12px;font-weight:700"></p>
-</div>
-
+  <div class="card">
+    <h3 style="margin:0 0 8px">2｜抽一本書</h3>
+    <button id="drawBtn">抽書</button>
+    <div id="result" style="margin-top:12px;font-weight:800;font-size:18px"></div>
+  </div>
 </main>
 
 <script>
-const STORAGE_KEY = "pickabook_books_v1";
+  const STORAGE_KEY = "pickabook_books_v1";
 
-function norm(s){
-  return (s||"").toString().toLowerCase().trim();
-}
+  function norm(s){ return (s ?? "").toString().trim().toLowerCase(); }
 
-function parseCSV(text){
-  const [head,...rows] = text.split(/\r?\n/);
-  const headers = head.split(",");
-  return rows.map(r=>{
-    const cols=r.split(",");
-    const o={};
-    headers.forEach((h,i)=>o[h]=cols[i]||"");
-    return o;
-  });
-}
+  // RFC4180-ish CSV parser: supports quotes, commas, and newlines inside quotes.
+  function parseCSV(text){
+    const rows = [];
+    let row = [];
+    let field = "";
+    let i = 0;
+    let inQuotes = false;
 
-document.getElementById("csvInput").addEventListener("change",e=>{
-  const f=e.target.files[0];
-  if(!f) return;
-  const r=new FileReader();
-  r.onload=()=>{
-    const rows=parseCSV(r.result);
-    const books=[];
-    rows.forEach(row=>{
-      const ex=norm(row["Exclusive Shelf"]);
-      const shelves=norm(row["Bookshelves"]);
-      const isTBR =
-        ex==="to-read" ||
-        shelves.includes("to-read") ||
-        shelves.includes("want to read") ||
-        shelves.includes("want-to-read") ||
-        shelves.includes("wanttoread");
-      if(!isTBR) return;
-      books.push({
-        title:row["Title"],
-        author:row["Author"]
-      });
-    });
-    localStorage.setItem(STORAGE_KEY,JSON.stringify(books));
-    alert(`已匯入 ${books.length} 本書`);
-  };
-  r.readAsText(f);
-});
+    while (i < text.length){
+      const c = text[i];
 
-function drawBook(){
-  const books=JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]");
-  if(!books.length){
-    alert("尚未匯入書單");
-    return;
+      if (inQuotes){
+        if (c === '"'){
+          const next = text[i+1];
+          if (next === '"'){ field += '"'; i += 2; continue; } // escaped quote
+          inQuotes = false; i++; continue;
+        } else {
+          field += c; i++; continue;
+        }
+      } else {
+        if (c === '"'){ inQuotes = true; i++; continue; }
+        if (c === ','){ row.push(field); field=""; i++; continue; }
+        if (c === '\r'){
+          // ignore, handle by \n
+          i++; continue;
+        }
+        if (c === '\n'){
+          row.push(field); field="";
+          rows.push(row);
+          row = [];
+          i++; continue;
+        }
+        field += c; i++; continue;
+      }
+    }
+    // last field
+    row.push(field);
+    rows.push(row);
+
+    // remove possible trailing empty row
+    if (rows.length && rows[rows.length-1].length === 1 && rows[rows.length-1][0] === ""){
+      rows.pop();
+    }
+    return rows;
   }
-  const b=books[Math.floor(Math.random()*books.length)];
-  document.getElementById("result").innerText =
-    `📖 ${b.title} — ${b.author}`;
-}
-</script>
 
+  function rowsToObjects(rows){
+    if (!rows.length) return [];
+    const headers = rows[0].map(h => (h ?? "").toString().trim());
+    const out = [];
+    for (let r=1; r<rows.length; r++){
+      const cols = rows[r];
+      // skip totally empty lines
+      if (cols.every(x => (x ?? "").toString().trim() === "")) continue;
+      const o = {};
+      for (let c=0; c<headers.length; c++){
+        o[headers[c]] = (cols[c] ?? "");
+      }
+      out.push(o);
+    }
+    return out;
+  }
+
+  function getField(row, possibleNames){
+    for (const name of possibleNames){
+      if (Object.prototype.hasOwnProperty.call(row, name)) return row[name];
+    }
+    // fallback: case-insensitive match
+    const keys = Object.keys(row);
+    for (const name of possibleNames){
+      const target = name.toLowerCase();
+      const hit = keys.find(k => k.toLowerCase() === target);
+      if (hit) return row[hit];
+    }
+    return "";
+  }
+
+  function isTBR(row){
+    const ex = norm(getField(row, ["Exclusive Shelf","ExclusiveShelf"]));
+    const shelvesRaw = norm(getField(row, ["Bookshelves","Book Shelves","bookshelves"]));
+
+    // shelves can be comma separated; normalize by replacing punctuation with spaces
+    const shelves = shelvesRaw.replace(/[;|]/g, ",");
+    const hasShelf = (kw) => shelves.includes(kw);
+
+    return (
+      ex === "to-read" ||
+      hasShelf("to-read") ||
+      hasShelf("want to read") ||
+      hasShelf("want-to-read") ||
+      hasShelf("wanttoread")
+    );
+  }
+
+  function bookFromRow(row){
+    const title = getField(row, ["Title","Book Title"]);
+    const author = getField(row, ["Author","Author l-f","Author LF","Author(s)"]);
+    return { title: (title ?? "").toString().trim(), author: (author ?? "").toString().trim() };
+  }
+
+  function summarizeExclusiveShelves(rows){
+    const counts = new Map();
+    for (const row of rows){
+      const ex = norm(getField(row, ["Exclusive Shelf","ExclusiveShelf"]));
+      if (!ex) continue;
+      counts.set(ex, (counts.get(ex) ?? 0) + 1);
+    }
+    // top 6
+    const sorted = [...counts.entries()].sort((a,b)=>b[1]-a[1]).slice(0,6);
+    return sorted.map(([k,v])=>`${k}: ${v}`).join(" | ");
+  }
+
+  document.getElementById("csvInput").addEventListener("change", (e)=>{
+    const f = e.target.files[0];
+    if(!f) return;
+
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      try{
+        const raw = reader.result;
+        const rows = parseCSV(raw);
+        const objs = rowsToObjects(rows);
+
+        const total = objs.length;
+        const tbr = [];
+        for (const row of objs){
+          if (isTBR(row)){
+            const b = bookFromRow(row);
+            if (b.title) tbr.push(b);
+          }
+        }
+
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(tbr));
+
+        const exSummary = summarizeExclusiveShelves(objs);
+        document.getElementById("importInfo").textContent =
+`讀到資料列：${total}
+符合待讀（to-read / want-to-read / want to read）：${tbr.length}
+Exclusive Shelf 統計（前幾種）：${exSummary || "(無資料)"}
+`;
+        alert(`已匯入 ${tbr.length} 本待讀書`);
+      }catch(err){
+        console.error(err);
+        alert("解析 CSV 失敗：可能檔案格式不標準。請把 CSV 另存成 UTF-8 再試一次。");
+      }
+    };
+    reader.readAsText(f);
+  });
+
+  document.getElementById("drawBtn").addEventListener("click", ()=>{
+    const books = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    if(!books.length){
+      alert("尚未匯入待讀書單（或匯入後結果為 0）。");
+      return;
+    }
+    const b = books[Math.floor(Math.random()*books.length)];
+    document.getElementById("result").textContent = `📖 ${b.title} — ${b.author || "Unknown"}`;
+  });
+</script>
 </body>
 </html>
